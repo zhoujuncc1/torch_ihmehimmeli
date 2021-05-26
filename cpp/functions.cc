@@ -44,18 +44,20 @@ VectorXd GeneratePulses(const int n_pulses,
   return pulses_per_layer;
 }
 
-
 double ComputeCrossEntropyLossWithPenalty(
-    const VectorXd& outputs, const VectorXd& targets,
-    const VectorXd& spike_times) {
+    const VectorXd &outputs, const VectorXd &targets,
+    const VectorXd &spike_times)
+{
   double total_loss = 0.0;
   const double kEps = 1e-8;
   double penalty_output_spike_time_ = 0.0;
-  for (int i = 0; i < targets.size(); ++i) {
+  for (int i = 0; i < targets.size(); ++i)
+  {
     total_loss -= targets[i] * log(outputs[i] + kEps);
   }
 
-  for (int i = 0; i < spike_times.size(); ++i) {
+  for (int i = 0; i < spike_times.size(); ++i)
+  {
     total_loss += penalty_output_spike_time_ * spike_times[i] * spike_times[i];
   }
 
@@ -64,7 +66,7 @@ double ComputeCrossEntropyLossWithPenalty(
 
 double CrossEntropyLoss(const VectorXd &activations, VectorXd &targets)
 {
-  VectorXd exp_outputs(activations.size());  // softmaxed outputs
+  VectorXd exp_outputs(activations.size()); // softmaxed outputs
   double min_output = *min_element(activations.begin(), activations.end());
   for (int i = 0; i < activations.size(); ++i)
     exp_outputs[i] = exp(-activations[i] + min_output);
@@ -76,7 +78,7 @@ double CrossEntropyLoss(const VectorXd &activations, VectorXd &targets)
 
 VectorXd CrossEntropyLossDerivative(const VectorXd &activations, VectorXd &targets)
 {
-  VectorXd exp_outputs(activations.size());  // softmaxed outputs
+  VectorXd exp_outputs(activations.size()); // softmaxed outputs
   double min_output = *min_element(activations.begin(), activations.end());
   for (int i = 0; i < activations.size(); ++i)
     exp_outputs[i] = exp(-activations[i] + min_output);
@@ -86,9 +88,48 @@ VectorXd CrossEntropyLossDerivative(const VectorXd &activations, VectorXd &targe
   VectorXd d_activations_pre(activations.size());
 
   // Accumulate derivative of cross-entropy loss at each output node.
-  for (int k = 0; k < activations.size(); ++k) {
+  for (int k = 0; k < activations.size(); ++k)
+  {
     d_activations_pre[k] = -(exp_outputs[k] - targets[k]);
   }
   return d_activations_pre;
-  
-  }
+}
+
+
+double WeightDerivativeAlpha(const VectorXd& activations,
+                                        const VectorXXb& causal_sets,
+                                        const VectorXd& a, const VectorXd& b,
+                                        const VectorXd& w, int post,
+                                        int pre, DecayParams decay_params) {
+  if (!causal_sets[post][pre]) return 0.0;
+  const double tp = activations[pre];
+  const double A = a[post];
+  const double B = b[post];
+  const double W = w[post];
+  const double K = decay_params.rate();
+  const double e_K_tp = exp(K * tp);
+  const double K_inverse = decay_params.rate_inverse();
+  return ClipDerivative(e_K_tp * (tp - B / A + W * K_inverse) / (A * (1.0 + W)),
+                        CLIP_DERIVATIVE);
+}
+
+double ActivationDerivativeAlpha(const VectorXd& activations, const VectorXXd& weights,
+                                            const VectorXXb& causal_sets,
+                                            const VectorXd& a,
+                                            const VectorXd& b,
+                                            const VectorXd& w,
+                                            int post, int pre, DecayParams decay_params) {
+  if (activations[post] == K_NO_SPIKE) return 0.0;  // no post spike
+  if (activations[pre] == K_NO_SPIKE) return 0.0;       // no pre spike
+  if (!causal_sets[post][pre]) return 0.0;            // no influence
+  const double wp = weights[post][pre];
+  const double tp = activations[pre];
+  const double A = a[post];
+  const double B = b[post];
+  const double W = w[post];
+  const double K = decay_params.rate();
+  const double e_K_tp = exp(K * tp);
+  return ClipDerivative(
+      wp * e_K_tp * (K * (tp - B / A) + W + 1) / (A * (1.0 + W)),
+      CLIP_DERIVATIVE);
+}

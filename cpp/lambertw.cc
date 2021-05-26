@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tempcoding/lambertw.h"
+#include "lambertw.h"
 
 #include <cmath>
 #include <cstdlib>
 
 // Implements a LambertW function, 0-branch approximation. Based partly on:
 // https://arxiv.org/pdf/1003.1628.pdf
-
-namespace {
 
 double LambertW0InitialGuess(double x) {
   constexpr double kNearBranchCutoff = -0.3235;
@@ -56,9 +54,7 @@ double LambertW0InitialGuess(double x) {
   const double ll = std::log(l);
   return l - ll + ll / l;
 }
-}  // namespace
 
-namespace ihmehimmeli {
 
 bool LambertW0(double x, double *output) {
   constexpr double kReciprocalE = 0.36787944117;
@@ -97,4 +93,4 @@ bool LambertW0(double x, double *output) {
   return have_convergence;
 }
 
-}  // namespace ihmehimmeli
+

@@ -9,15 +9,18 @@ import os
 import numpy as np
 from array import array
 import math
+import torch
 
 decay_rate = 0.18176949150701854
 kNoSpike = 1000
 
+
 class TestLambertW0(unittest.TestCase):
     def test_values(self):
-        vs = np.random.random(10000)*1000
+        vs = torch.rand(100)*100
         lambert_c = [CLambertW0(v) for v in vs]
-        np.testing.assert_almost_equal(lambertw(vs), lambert_c)
+        np.testing.assert_almost_equal(lambertw(vs), lambert_c, decimal=5)
+
 
 
 # class TestArgSort(unittest.TestCase):
@@ -35,20 +38,20 @@ class TestLambertW0(unittest.TestCase):
 #         self.assertEqual(list(GetSortedIndices(x)), expect)
 
 
+
 class TestExponentiateSortedValidSpikes(unittest.TestCase):
     def test_exp(self):
+        os.chdir('/mnt/d/workspace/ihmehimmeli/python')
         x = np.random.random(10)
         cmd = ["./cpp/testExponentiateSortedValidSpikes"]
         for v in x:
             cmd.append(str(v))
-        sorted_idx = GetSortedIndices(x)
         decay_rate = 0.18176949150701854
-        out_x = ExponentiateSortedValidSpikes(x, decay_rate)
+        out_x = ExponentiateSortedValidSpikes(torch.tensor(x), decay_rate)
         expected_call = subprocess.run(cmd, stdout=subprocess.PIPE)
         expected_str = str(expected_call.stdout)[2:-2].split(' ')
         expected_arr = np.asarray([float(s) for s in expected_str])
         np.testing.assert_almost_equal(out_x,expected_arr)
-
 
 class TestActivateNeuronAlpha(unittest.TestCase):
     def test_activation(self):
@@ -57,17 +60,17 @@ class TestActivateNeuronAlpha(unittest.TestCase):
         n = 100
         weight = np.random.random((n, m))
         activation = np.random.random(m)
-        sorted_indices = GetSortedIndices(activation)
+        activation_tensor = torch.tensor(activation)
+        weight_tensor = torch.tensor(weight)
+        sorted_indices = GetSortedIndices(activation_tensor)
         exp_activation = ExponentiateSortedValidSpikes(
-            activation, decay_rate)
+            activation_tensor, decay_rate)
         spike_time = []
-        A = []
-        B = []
-        W = []
+        A_B_W = []
         causal_set = []
         threshold = 1.0
-        spike_time, A_B_W, causal_set = ActivateNeuronAlpha(weight, activation, exp_activation, sorted_indices, threshold)
- 
+        spike_time, A_B_W, causal_set = ActivateNeuronAlpha(
+                weight_tensor, activation_tensor, exp_activation, sorted_indices, threshold)
         weight_f = "./cpp/weight_f.bin"
         activation_f = "./cpp/activation_f.bin"
         A_f = "./cpp/A_f.bin"
@@ -113,16 +116,15 @@ class TestActivateNeuronAlpha(unittest.TestCase):
         causal_set_expect = [v==1 for v in causal_set_expect]
         f.close()
 
-        np.testing.assert_almost_equal(spike_time, spike_time_expect, decimal=5)
+        np.testing.assert_almost_equal(spike_time.numpy(), spike_time_expect, decimal=5)
 
-        np.testing.assert_almost_equal(A_B_W[0], A_expect)
+        np.testing.assert_almost_equal(A_B_W[0].numpy(), A_expect)
 
-        np.testing.assert_almost_equal(A_B_W[1], B_expect)
-        np.testing.assert_almost_equal(A_B_W[2], W_expect)
-        np.testing.assert_almost_equal(causal_set.flatten(), causal_set_expect)
+        np.testing.assert_almost_equal(A_B_W[1].numpy(), B_expect)
+        np.testing.assert_almost_equal(A_B_W[2].numpy(), W_expect)
+        np.testing.assert_almost_equal(causal_set.numpy().flatten()==1, causal_set_expect)
 
-        self.assertTrue(False in causal_set, "causal net not containt false")
-
+        self.assertTrue(False in causal_set.numpy(), "causal net not containt false")
 class TestLayer(unittest.TestCase):
     def test_forward(self):
         os.chdir('/mnt/d/workspace/ihmehimmeli/python')
@@ -133,7 +135,7 @@ class TestLayer(unittest.TestCase):
         threshold=1.0
         n_pulse=2
         layer = Layer(m, n, threshold, n_pulse=n_pulse, input_range = (min(activation), max(activation)))
-        activation_next = layer.forward(activation)
+        activation_next = layer.forward(torch.tensor(activation))
 
         weight_f = "./cpp/weight_f.bin"
         activation_f = "./cpp/activation_f.bin"
@@ -184,12 +186,11 @@ class TestLayer(unittest.TestCase):
         activation_next = np.concatenate([activation_next, layer.pulse])
         np.testing.assert_almost_equal(activation_next, spike_time_expect, decimal=6)
 
-        np.testing.assert_almost_equal(layer.A, A_expect)
+        np.testing.assert_almost_equal(layer.A_B_W[0].numpy(), A_expect, decimal=6)
 
-        np.testing.assert_almost_equal(layer.B, B_expect)
-        np.testing.assert_almost_equal(layer.W, W_expect)
-        np.testing.assert_almost_equal(layer.causal_set.flatten(), causal_set_expect)
-
+        np.testing.assert_almost_equal(layer.A_B_W[1].numpy(), B_expect)
+        np.testing.assert_almost_equal(layer.A_B_W[2].numpy(), W_expect)
+        np.testing.assert_almost_equal(layer.causal_set.numpy().flatten()==1, causal_set_expect)
         self.assertTrue(layer.causal_set.sum() != layer.causal_set.size, "causal net not contain false")
 
     def test_backward(self):
@@ -201,11 +202,10 @@ class TestLayer(unittest.TestCase):
         threshold=1.0
         n_pulse=2
         layer = Layer(m, n, threshold, n_pulse=n_pulse, input_range = (min(activation), max(activation)))
-        activation_next = layer.forward(activation)
+        activation_next = layer.forward(torch.tensor(activation))
         loss = np.random.random(len(activation_next))
-
         activation_next = np.concatenate([activation_next, layer.pulse])
-        layer.backward(loss)
+        layer.backward(torch.tensor(loss))
 
         weight_f = "./cpp/weight_f.bin"
         activation_f = "./cpp/activation_f.bin"
@@ -271,13 +271,13 @@ class TestLayer(unittest.TestCase):
         f.close()
         np.testing.assert_almost_equal(activation_next, spike_time_expect, decimal=6)
 
-        np.testing.assert_almost_equal(layer.A, A_expect)
+        np.testing.assert_almost_equal(layer.A.numpy(), A_expect, decimal=6)
 
-        np.testing.assert_almost_equal(layer.B, B_expect)
-        np.testing.assert_almost_equal(layer.W, W_expect)
-        np.testing.assert_almost_equal(layer.causal_set.flatten(), causal_set_expect)
-        np.testing.assert_almost_equal(layer.grad_x, grad_x_expect)
-        np.testing.assert_almost_equal(layer.grad_w.flatten(), grad_w_expect)
+        np.testing.assert_almost_equal(layer.B.numpy(), B_expect)
+        np.testing.assert_almost_equal(layer.W.numpy(), W_expect)
+        np.testing.assert_almost_equal(layer.causal_set.numpy().flatten(), causal_set_expect)
+        np.testing.assert_almost_equal(layer.grad_x.numpy(), grad_x_expect)
+        np.testing.assert_almost_equal(layer.grad_w.numpy().flatten(), grad_w_expect)
 
         self.assertTrue(layer.causal_set.sum() != layer.causal_set.size, "causal net not contain false")
 
@@ -290,14 +290,13 @@ class TestCrossEntropyLoss(unittest.TestCase):
         for v in x:
             cmd.append(str(v))
         cmd.append(str(target))
-        loss_v = loss(x, target)
-        derivative = loss_derivative(x, target)
+        loss_v = loss(torch.tensor(x), torch.tensor(target))
+        derivative = loss_derivative(torch.tensor(x), torch.tensor(target))
         expected_call = subprocess.run(cmd, stdout=subprocess.PIPE)
         expected_str = str(expected_call.stdout)[2:-2].split(' ')
         expected_arr = np.asarray([float(s) for s in expected_str])
-        np.testing.assert_almost_equal(loss_v,expected_arr[0])
-        np.testing.assert_almost_equal(derivative,expected_arr[1:])
-
+        np.testing.assert_almost_equal(loss_v.numpy(),expected_arr[0])
+        np.testing.assert_almost_equal(derivative.numpy(),expected_arr[1:])
         
 if __name__ == '__main__':
     unittest.main()

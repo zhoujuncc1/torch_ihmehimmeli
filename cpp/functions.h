@@ -11,6 +11,16 @@ typedef std::vector<std::vector<unsigned char>> VectorXXb;
 
 #define K_NO_SPIKE 1000
 #define DECAY_RATE 0.18176949150701854
+#define PENALTY_NO_SPIKE 48.3748
+#define CLIP_DERIVATIVE 539.7
+
+
+static double ClipDerivative(double val, double limit) {
+  if (limit == 0.0) return val;
+  if (val < -limit) val = -limit;
+  if (val > limit) val = limit;
+  return val;
+}
 
 class DecayParams
 {
@@ -52,5 +62,16 @@ double ComputeCrossEntropyLossWithPenalty(
     const VectorXd& outputs, const VectorXd& targets,
     const VectorXd& spike_times);
 VectorXd CrossEntropyLossDerivative(const VectorXd &activations, VectorXd &targets);
+double WeightDerivativeAlpha(const VectorXd& activations,
+                                        const VectorXXb& causal_sets,
+                                        const VectorXd& a, const VectorXd& b,
+                                        const VectorXd& w, int post,
+                                        int pre, DecayParams decay_params);
 
+double ActivationDerivativeAlpha(const VectorXd& activations, const VectorXXd& weights,
+                                            const VectorXXb& causal_sets,
+                                            const VectorXd& a,
+                                            const VectorXd& b,
+                                            const VectorXd& w,
+                                            int post, int pre, DecayParams decay_params);
 #endif

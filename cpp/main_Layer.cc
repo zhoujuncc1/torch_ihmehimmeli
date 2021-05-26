@@ -12,11 +12,18 @@ int main(int argc, char *argv[])
   char *B_f;
   char *W_f;
   char *causal_set_f;
+  char *d_loss_f;
+  char *d_w_f;
+  char *d_x_f;
   int m, n;
   double theta;
   int n_pulse;
-
-  if (argc < 11)
+  bool forward_only = false;
+  if (argc == 11)
+  {
+    forward_only = true;
+  }
+  else if (argc < 14)
   {
     printf("Not enough arguments\n");
     exit(1);
@@ -32,7 +39,12 @@ int main(int argc, char *argv[])
   n = atoi(argv[8]);
   theta = atof(argv[9]);
   n_pulse = atoi(argv[10]);
-
+  if (!forward_only)
+  {
+    d_loss_f = argv[11];
+    d_w_f = argv[12];
+    d_x_f = argv[13];
+  }
   VectorXd activations(m);
   VectorXd activations_next(n);
   VectorXXd weights(n);
@@ -40,6 +52,10 @@ int main(int argc, char *argv[])
   VectorXd B(n);
   VectorXd W(n);
   VectorXXb causal_set(n);
+
+  VectorXXd grad_weights(n);
+  VectorXd grad_activation(m+n_pulse);
+  VectorXd loss(n+n_pulse);
 
   // activations.resize(m);
   // activations_next.resize(n);
@@ -61,29 +77,35 @@ int main(int argc, char *argv[])
   }
   fin.close();
 
-  std::ifstream fin2(weight_f, std::ios::binary);
-
-
-  weights.assign(n, VectorXd(m+n_pulse));
-  causal_set.assign(n, VectorXb(m+n_pulse, 0));
-
+  fin.open(weight_f, std::ios::binary);
+  weights.assign(n, VectorXd(m + n_pulse));
+  causal_set.assign(n, VectorXb(m + n_pulse, 0));
   for (int i = 0; i < n; ++i)
   {
     //weights[i].resize(m);
-    for (int j = 0; j < m+n_pulse; ++j)
+    for (int j = 0; j < m + n_pulse; ++j)
     {
-      fin2.read(reinterpret_cast<char *>(&f), sizeof(double));
-      weights[i][j]=f;
+      fin.read(reinterpret_cast<char *>(&f), sizeof(double));
+      weights[i][j] = f;
     }
   }
-  fin2.close();
-
+  fin.close();
+  if (!forward_only)
+  {
+    fin.open(d_loss_f, std::ios::binary);
+    for (int i = 0; i < n+n_pulse; ++i)
+    {
+      fin.read(reinterpret_cast<char *>(&f), sizeof(double));
+      loss[i] = f;
+    }
+    fin.close();
+  }
+  // Forward
   double max_v = *std::max_element(activations.begin(), activations.end());
   double min_v = *std::min_element(activations.begin(), activations.end());
   std::pair<double, double> input_range(min_v, max_v);
   VectorXd pulse = GeneratePulses(n_pulse, input_range);
   activations.insert(activations.end(), pulse.begin(), pulse.end());
-
 
   std::vector<size_t> sorted_indices = GetSortedIndices(activations);
   // Precompute exp(activations).
@@ -100,8 +122,46 @@ int main(int argc, char *argv[])
   }
   activations_next.insert(activations_next.end(), pulse.begin(), pulse.end());
 
+  // Backward
+  if (!forward_only)
+  {
+    grad_weights.assign(n, VectorXd(m + n_pulse, 0.0));
+    grad_activation.assign(m + n_pulse, 0.0);
+    // Update weights.
+    for (int k = 0; k < n; ++k)
+    {
+      for (int j = 0; j < m + n_pulse; ++j)
+      {
+        // Update weight derivative between current layers.
+        if (activations[k] == K_NO_SPIKE)
+        {
+          // no spike, negative grad
+          grad_weights[k][j] += -PENALTY_NO_SPIKE;
+        }
+        else
+        {
+          double derivative;
+
+          derivative = loss[k] *
+                       WeightDerivativeAlpha(activations, causal_set, A, B,
+                                             W, k, j, decay_param);
+
+          grad_weights[k][j] +=
+              ClipDerivative(derivative, CLIP_DERIVATIVE);
+        }
+        // Update activation derivative in presynaptic wrt postsynaptic layer.
+        double derivative;
+
+        derivative = loss[k] *
+                     ActivationDerivativeAlpha(activations, weights, causal_set, A, B,
+                                               W, k, j, decay_param);
+
+        grad_activation[j] += ClipDerivative(derivative, CLIP_DERIVATIVE);
+      }
+    }
+  }
   std::ofstream fout(activation_f, std::ios::binary);
-  for (int i = 0; i < n+n_pulse; ++i)
+  for (int i = 0; i < n + n_pulse; ++i)
   {
     fout.write(reinterpret_cast<const char *>(&activations_next[i]), sizeof(double));
   }
@@ -128,12 +188,32 @@ int main(int argc, char *argv[])
   fout.close();
 
   fout.open(causal_set_f, std::ios::binary);
-
   for (int i = 0; i < n; ++i)
   {
-    for (int j = 0; j < m+n_pulse; ++j){
+    for (int j = 0; j < m + n_pulse; ++j)
+    {
       fout.write(reinterpret_cast<const char *>(&causal_set[i][j]), sizeof(unsigned char));
     }
   }
   fout.close();
+
+  if (!forward_only)
+  {
+    fout.open(d_w_f, std::ios::binary);
+    for (int i = 0; i < n; ++i)
+    {
+      for (int j = 0; j < m + n_pulse; ++j)
+      {
+        fout.write(reinterpret_cast<char *>(&grad_weights[i][j]), sizeof(double));
+      }
+    }
+    fout.close();
+
+    fout.open(d_x_f, std::ios::binary);
+    for (int i = 0; i < m + n_pulse; ++i)
+    {
+      fout.write(reinterpret_cast<const char *>(&grad_activation[i]), sizeof(double));
+    }
+    fout.close();
+  }
 }
