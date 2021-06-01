@@ -7,3 +7,7 @@ To test numpy implementation:
 
 To test torch implementation
     python torch/test.py
+
+## ToDo:
+1. Torch package: include training
+2. Support Convolution - How to backpropagate Convolution Layer
