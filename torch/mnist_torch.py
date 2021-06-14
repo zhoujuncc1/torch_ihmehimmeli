@@ -7,7 +7,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 from Layer import Linear, cross_entropy_loss, LayerParam
-from torch.nn.parameter import Parameter, UninitializedParameter
+from torch.nn.parameter import Parameter
 
 class Net(nn.Module):
     def __init__(self, n_pulse, layer_prarams):
@@ -51,7 +51,7 @@ def test(model, device, test_loader, penalty_output_spike_time=0):
             data, target = data.to(device), target.to(device)
             output = model(data)
             test_loss += cross_entropy_loss(output, target, penalty_output_spike_time).item()  # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+            pred = output.argmax()  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
@@ -70,8 +70,6 @@ def main():
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 14)')
-    parser.add_argument('--lr', type=float, default=1e-2, metavar='LR',
-                        help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -103,9 +101,9 @@ def main():
     transform=transforms.Compose([
         transforms.ToTensor()
         ])
-    dataset1 = datasets.MNIST('../data', train=True, download=True,
+    dataset1 = datasets.MNIST('/home/jun/data', train=True, download=True,
                        transform=transform)
-    dataset2 = datasets.MNIST('../data', train=False,
+    dataset2 = datasets.MNIST('/home/jun/data', train=False,
                        transform=transform)
     train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
     test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
@@ -120,7 +118,12 @@ def main():
     input_range = (0,1)
     layer_params = LayerParam(kNoSpike, decay_rate, threshold, penalty_no_spike, pulse_init_multiplier, nopulse_init_multiplier, input_range, dtype=torch.float)
     model = Net(n_pulse, layer_params).to(device)
-    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+    optimizer = optim.Adam([
+                {'params': model.fc1.weight},
+                {'params': model.fc2.weight},
+                {'params': model.fc1.pulse, 'lr': 5.95375e-2},
+                {'params': model.fc2.pulse, 'lr': 5.95375e-2}
+            ], lr=2.01864e-4)
 
     #scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     for epoch in range(1, args.epochs + 1):
@@ -128,8 +131,8 @@ def main():
         test(model, device, test_loader)
 #        scheduler.step()
 
-    if args.save_model:
-        torch.save(model.state_dict(), "mnist_mlp.pt")
+        if args.save_model:
+            torch.save(model.state_dict(), "mnist_mlp.pt")
 
 
 if __name__ == '__main__':
