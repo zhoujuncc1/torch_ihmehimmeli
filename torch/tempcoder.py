@@ -21,6 +21,10 @@ kMaxLambertArg = torch.tensor(1.7976131e+308, dtype=torch.double)
 def GetSortedIndices(activations):
     return torch.argsort(activations)
 
+def SortActivations(activations):
+    sorted, _ = torch.sort(activations)
+    return sorted
+
 def ExponentiateSortedValidSpikes(activations, layer_param):
     return torch.where(activations==layer_param.kNoSpike, layer_param.kNoSpike, torch.exp(layer_param.decay_rate * activations))
 
@@ -32,7 +36,7 @@ def ExponentiateSortedValidSpikes(activations, layer_param):
 
 def ActivateNeuronAlpha_itr(weight, activation, exp_activation, A_B_W, layer_param):
     #spike_time = activation.new_full(len(weight), kNoSpike)
-    w_exp_z = weight * exp_activation
+    w_exp_z = torch.squeeze(weight) * exp_activation
     A_B_W[0] += w_exp_z
     A_B_W[1] += w_exp_z * activation
 
@@ -60,12 +64,14 @@ def ActivateNeuronAlpha(weight, activations, exp_activation, sorted_indices, lay
     spike_time = activations.new_full([batch_size, fan_out], layer_param.kNoSpike)
     A_B_W =  activations.new_full([3, batch_size, fan_out], 0)
     causal_set =  activations.new_full([batch_size, fan_out, fan_in], False, dtype=torch.bool)
-    for i in range(batch_size):
-        for spike_idx in sorted_indices[i]:
-            done = spike_time[i] <= activations[i][spike_idx]
-            spike_time_tmp, A_B_W_tmp = ActivateNeuronAlpha_itr(weight[:, spike_idx], activations[i][spike_idx], exp_activation[i][spike_idx], A_B_W[:,i,:].clone(), layer_param)
-            spike_time[i] = torch.where(done, spike_time[i], spike_time_tmp)
-            A_B_W[:,i,:] = torch.where(done, A_B_W[:,i,:], A_B_W_tmp)
+    for i in range(fan_in):
+        spike_idx = sorted_indices[:,i:i+1]
+        this_activation = torch.gather(activations, 1, spike_idx)
+        
+        done = spike_time <= this_activation
+        spike_time_tmp, A_B_W_tmp = ActivateNeuronAlpha_itr(torch.gather(weight[None,:,:].expand([batch_size,-1,-1]), 2, spike_idx[:,None,:].expand(-1,fan_out, -1)), this_activation, torch.gather(exp_activation, 1, spike_idx), A_B_W.clone(), layer_param)
+        spike_time = torch.where(done, spike_time, spike_time_tmp)
+        A_B_W = torch.where(done, A_B_W, A_B_W_tmp)
 
     causal_set = torch.logical_or(spike_time[:, :, None]==layer_param.kNoSpike, spike_time[:,:,None] > activations[:,None,:])
     return spike_time, A_B_W, causal_set

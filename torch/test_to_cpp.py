@@ -275,22 +275,30 @@ class TestLayer(unittest.TestCase):
 
         self.assertTrue(layer.causal_set.sum() != layer.causal_set.size, "causal net not contain false")
 
-'''
+
 class TestCrossEntropyLoss(unittest.TestCase):
     def test_exp(self):
-        x = np.random.random(10)
-        target = np.random.randint(0, 10, 1)[0]
-        cmd = ["./cpp/testCrossEntropyLoss"]
-        for v in x:
-            cmd.append(str(v))
-        cmd.append(str(target))
-        loss_v = loss(torch.tensor(x), torch.tensor(target))
-        derivative = loss_derivative(torch.tensor(x), torch.tensor(target))
-        expected_call = subprocess.run(cmd, stdout=subprocess.PIPE)
-        expected_str = str(expected_call.stdout)[2:-2].split(' ')
-        expected_arr = np.asarray([float(s) for s in expected_str])
-        np.testing.assert_almost_equal(loss_v.numpy(),expected_arr[0])
-        np.testing.assert_almost_equal(derivative.numpy(),expected_arr[1:])
-'''
+        batch_size = 5
+        x = np.random.random((batch_size,10))
+        target = np.random.randint(0, 10, batch_size)
+        x_tensor = torch.tensor(x, dtype=torch.float32)
+        target_tensor = torch.tensor(target)
+        onehot_target = torch.nn.functional.one_hot(target_tensor, 10)
+        loss_v, min_value = loss(x_tensor, onehot_target)
+        derivative = loss_derivative(x_tensor, onehot_target, min_value)
+
+        test_index = 0
+        for test_index in range(batch_size):
+            print("Test Index:", test_index)
+            cmd = ["./cpp/testCrossEntropyLoss"]
+            for v in x[test_index]:
+                cmd.append(str(v))
+            cmd.append(str(target[test_index]))
+
+            expected_call = subprocess.run(cmd, stdout=subprocess.PIPE)
+            expected_str = str(expected_call.stdout)[2:-2].split(' ')
+            expected_arr = np.asarray([float(s) for s in expected_str])
+            np.testing.assert_almost_equal(loss_v[test_index].numpy(),expected_arr[0])
+            np.testing.assert_almost_equal(derivative[test_index].numpy(),expected_arr[1:])
 if __name__ == '__main__':
     unittest.main()

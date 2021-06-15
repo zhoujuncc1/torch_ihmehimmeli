@@ -9,10 +9,6 @@ from torch.optim.lr_scheduler import StepLR
 from Layer import Linear, cross_entropy_loss, LayerParam
 from torch.nn.parameter import Parameter
 
-def onehot(target, n_class):
-    out = torch.zeros(n_class)
-    out[target] = 1
-    return out
 
 class Net(nn.Module):
     def __init__(self, n_pulse, layer_prarams):
@@ -30,12 +26,13 @@ def train(args, model, device, train_loader, optimizer, epoch, penalty_output_sp
     model.train()
     correct = 0
     for batch_idx, (data, target) in enumerate(train_loader):
-        data, onehot_target = 1-torch.flatten(data, start_dim=1),  onehot(target, 10)
+        data, onehot_target = 1-torch.flatten(data, start_dim=1),  F.one_hot(target, 10)
         data, onehot_target, target = data.to(device), onehot_target.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        correct += (output.argmax(dim=-1)==target).sum()
+        correct += (output.argmin(dim=-1)==target).sum()
         loss = cross_entropy_loss(output, onehot_target, penalty_output_spike_time).mean()
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
@@ -52,11 +49,11 @@ def test(model, device, test_loader, penalty_output_spike_time=0):
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
-            data, onehot_target = 1-torch.flatten(data, start_dim=1),  onehot(target, 10)
+            data, onehot_target = 1-torch.flatten(data, start_dim=1),  F.one_hot(target, 10)
             data, onehot_target, target = data.to(device), onehot_target.to(device), target.to(device)
             output = model(data)
             test_loss += cross_entropy_loss(output, onehot_target, penalty_output_spike_time).mean().item()  # sum up batch loss
-            pred = output.argmax(dim=-1)  # get the index of the max log-probability
+            pred = output.argmin(dim=-1)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
@@ -69,16 +66,16 @@ def test(model, device, test_loader, penalty_output_spike_time=0):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=10, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=5, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=10, mtavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 14)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training') # TODO: Change back
+                        help='disables CUDA training') 
     parser.add_argument('--dry-run', action='store_true', default=False,
                         help='quickly check a single pass')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
@@ -88,7 +85,7 @@ def main():
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
     args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()e
+    use_cuda = not args.no_cuda and torch.cuda.is_available()
 
     torch.manual_seed(args.seed)
 
@@ -129,7 +126,7 @@ def main():
                 {'params': model.fc1.pulse, 'lr': 5.95375e-2},
                 {'params': model.fc2.pulse, 'lr': 5.95375e-2}
             ], lr=2.01864e-4)
-
+    #optimizer = optim.Adam(model.parameters(), lr=2.01864e-2)
     #scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)

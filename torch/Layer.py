@@ -93,24 +93,25 @@ class Layer:
         self.grad_pulse = self.grad_x[-self.n_pulse:]
 
 
-def loss(x, target, penalty_output_spike_time_=0):
-    target = onehot(target, len(x))
-    min_value = torch.min(x)
-    loss = _torch_cross_entropy_loss_with_kEps(min_value-x, target)
-    loss += penalty_output_spike_time_ * torch.sum(x*x)
-    return loss
+
 
 kEps = 1e-8
 def _torch_cross_entropy_loss_with_kEps(x, target):
     exp_out = torch.exp(x)
-    exp_sum = torch.sum(exp_out, dim=-1)
-    return torch.sum(target[:, None] * -torch.log(exp_out/exp_sum  + kEps), dim=-1)
+    exp_sum = torch.sum(exp_out, dim=-1, keepdim=True)
+    return torch.sum(target * -torch.log(exp_out/exp_sum  + kEps), dim=-1)
 
-def loss_derivative(x, target, penalty_output_spike_time_=0.0):
-    min_value = torch.min(x)
+
+def loss(x, target, penalty_output_spike_time=0):
+    min_value, _ = torch.min(x, dim=-1,keepdim=True)
+    loss = _torch_cross_entropy_loss_with_kEps(min_value-x, target)
+    loss += torch.sum(x*x, dim=-1) * penalty_output_spike_time
+    return loss, min_value
+
+def loss_derivative(x, target, min_value, penalty_output_spike_time=0.0):
     exp_out = torch.exp(min_value-x)
-    exp_sum = torch.sum(exp_out)
-    return -(exp_out/exp_sum - target + penalty_output_spike_time_ * exp_out/exp_sum)
+    exp_sum = torch.sum(exp_out, dim=-1, keepdim=True)
+    return -(exp_out/exp_sum - target + penalty_output_spike_time * exp_out/exp_sum)
 
 
 # Inherit from Function
@@ -154,20 +155,17 @@ class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     # bias is an optional argument
     def forward(ctx, x, target, penalty_output_spike_time=0):
-        min_value, _ = torch.min(x, dim=-1,keepdim=True)
-        loss = _torch_cross_entropy_loss_with_kEps(min_value-x, target)
-        loss += torch.sum(x*x, dim=-1) * penalty_output_spike_time
+        loss_v, min_value = loss(x, target, penalty_output_spike_time)
         ctx.save_for_backward(x, target, min_value)
         ctx.penalty_output_spike_time = penalty_output_spike_time
-        return loss
+        return loss_v
 
     # This function has only a single output, so it gets only one gradient
     @staticmethod
     def backward(ctx, grad_output):
         x, target, min_value = ctx.saved_tensors
-        exp_out = torch.exp(min_value-x)
-        exp_sum = torch.sum(exp_out)
-        return -(exp_out/exp_sum - target + ctx.penalty_output_spike_time * exp_out/exp_sum), None, None
+        return loss_derivative(x, target, min_value, ctx.penalty_output_spike_time) , None, None
+
 
 def cross_entropy_loss(x, target, penalty_output_spike_time=0):
     return CrossEntropyLoss.apply(x, target, penalty_output_spike_time)
@@ -188,11 +186,10 @@ class Linear(nn.Module):
         self._init_weight()
 
     def _init_weight(self):
-        fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(self.weight)
-        std_dev = math.sqrt(2/(fan_in+fan_out))
+        std_dev = math.sqrt(2/(self.in_features+self.out_features))
         
         if self.n_pulse > 0:
-            nn.init.normal_(self.pulse,std_dev*self.layer_param.pulse_init_multiplier, std_dev)
+            nn.init.normal_(self.weight,std_dev*self.layer_param.pulse_init_multiplier, std_dev)
         else:
             nn.init.normal_(self.weight,std_dev*self.layer_param.nopulse_init_multiplier, std_dev)
 
