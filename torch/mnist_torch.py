@@ -9,6 +9,11 @@ from torch.optim.lr_scheduler import StepLR
 from Layer import Linear, cross_entropy_loss, LayerParam
 from torch.nn.parameter import Parameter
 
+def onehot(target, n_class):
+    out = torch.zeros(n_class)
+    out[target] = 1
+    return out
+
 class Net(nn.Module):
     def __init__(self, n_pulse, layer_prarams):
         super(Net, self).__init__()
@@ -25,18 +30,18 @@ def train(args, model, device, train_loader, optimizer, epoch, penalty_output_sp
     model.train()
     correct = 0
     for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = 1-torch.flatten(data[0]),  target[0]
-        data, target = data.to(device), target.to(device)
+        data, onehot_target = 1-torch.flatten(data, start_dim=1),  onehot(target, 10)
+        data, onehot_target, target = data.to(device), onehot_target.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        correct += output.argmax()==target
-        loss = cross_entropy_loss(output, target, penalty_output_spike_time)
+        correct += (output.argmax(dim=-1)==target).sum()
+        loss = cross_entropy_loss(output, onehot_target, penalty_output_spike_time).mean()
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\t Acc: {:.4f}'.format(
-                epoch, batch_idx * 1, len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item(), correct/(batch_idx+1)))
+                epoch, batch_idx * len(target), len(train_loader.dataset),
+                100. * batch_idx / len(train_loader), loss.item(), correct.item()/(batch_idx+1)/len(target)))
             if args.dry_run:
                 break
 
@@ -47,11 +52,11 @@ def test(model, device, test_loader, penalty_output_spike_time=0):
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
-            data, target = 1-torch.flatten(data[0]),  target[0]
-            data, target = data.to(device), target.to(device)
+            data, onehot_target = 1-torch.flatten(data, start_dim=1),  onehot(target, 10)
+            data, onehot_target, target = data.to(device), onehot_target.to(device), target.to(device)
             output = model(data)
-            test_loss += cross_entropy_loss(output, target, penalty_output_spike_time).item()  # sum up batch loss
-            pred = output.argmax()  # get the index of the max log-probability
+            test_loss += cross_entropy_loss(output, onehot_target, penalty_output_spike_time).mean().item()  # sum up batch loss
+            pred = output.argmax(dim=-1)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
@@ -64,26 +69,26 @@ def test(model, device, test_loader, penalty_output_spike_time=0):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=1, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=10, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=1, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=10, mtavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 14)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training')
+                        help='disables CUDA training') # TODO: Change back
     parser.add_argument('--dry-run', action='store_true', default=False,
                         help='quickly check a single pass')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=1, metavar='N',
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
     args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
+    use_cuda = not args.no_cuda and torch.cuda.is_available()e
 
     torch.manual_seed(args.seed)
 
@@ -116,7 +121,7 @@ def main():
     pulse_init_multiplier = 7.83912
     nopulse_init_multiplier = -0.275419
     input_range = (0,1)
-    layer_params = LayerParam(kNoSpike, decay_rate, threshold, penalty_no_spike, pulse_init_multiplier, nopulse_init_multiplier, input_range, dtype=torch.float)
+    layer_params = LayerParam(kNoSpike, decay_rate, threshold, penalty_no_spike, pulse_init_multiplier, nopulse_init_multiplier, input_range, dtype=torch.float, device=device)
     model = Net(n_pulse, layer_params).to(device)
     optimizer = optim.Adam([
                 {'params': model.fc1.weight},

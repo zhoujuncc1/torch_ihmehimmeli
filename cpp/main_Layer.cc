@@ -101,9 +101,9 @@ int main(int argc, char *argv[])
     fin.close();
   }
   // Forward
-  double max_v = *std::max_element(activations.begin(), activations.end());
-  double min_v = *std::min_element(activations.begin(), activations.end());
-  std::pair<double, double> input_range(min_v, max_v);
+  // double max_v = *std::max_element(activations.begin(), activations.end());
+  // double min_v = *std::min_element(activations.begin(), activations.end());
+  std::pair<double, double> input_range(0, 1);
   VectorXd pulse = GeneratePulses(n_pulse, input_range);
   activations.insert(activations.end(), pulse.begin(), pulse.end());
 
