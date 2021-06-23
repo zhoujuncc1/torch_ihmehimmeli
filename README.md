@@ -2,15 +2,15 @@
 Torch Ihmehimmeli is a torch version of [ihmehimmeli](https://github.com/google/ihmehimmeli)
 It is under development now.
 
-1. Install cuda extension by
+Install cuda extension by
+
     sh install.sh
 
-To test numpy implementation:
-    python test.py
+Run Example:
 
-To test torch implementation
-    python torch/test.py
+    python mnist_torch.py
+
 
 ## ToDo:
-1. Torch package: include training
+1. Improve performance
 2. Support Convolution - How to backpropagate Convolution Layer
