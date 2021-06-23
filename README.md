@@ -2,6 +2,9 @@
 Torch Ihmehimmeli is a torch version of [ihmehimmeli](https://github.com/google/ihmehimmeli)
 It is under development now.
 
+1. Install cuda extension by
+    sh install.sh
+
 To test numpy implementation:
     python test.py
 

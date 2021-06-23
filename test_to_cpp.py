@@ -30,7 +30,6 @@ layer_params = LayerParam(kNoSpike, decay_rate, threshold, penalty_no_spike, pul
 
 class TestExponentiateSortedValidSpikes(unittest.TestCase):
     def test_exp(self):
-        os.chdir('/home/jun/workspace-snn/torch_ihmehimmeli')
         x = np.random.random(10)
         cmd = ["./cpp/testExponentiateSortedValidSpikes"]
         for v in x:
@@ -44,7 +43,6 @@ class TestExponentiateSortedValidSpikes(unittest.TestCase):
 
 class TestActivateNeuronAlpha(unittest.TestCase):
     def test_activation(self):
-        os.chdir('/home/jun/workspace-snn/torch_ihmehimmeli')
         m = 200
         n = 100
         weight = np.random.random((n, m))
@@ -116,7 +114,6 @@ class TestActivateNeuronAlpha(unittest.TestCase):
 class TestLayer(unittest.TestCase):
 
     def test_forward(self):
-        os.chdir('/home/jun/workspace-snn/torch_ihmehimmeli')
         m = 200
         n = 100
         n_pulse = 10
@@ -184,7 +181,6 @@ class TestLayer(unittest.TestCase):
         self.assertTrue(layer.causal_set.sum() != layer.causal_set.size, "causal net not contain false")
 
     def test_backward(self):
-        os.chdir('/home/jun/workspace-snn/torch_ihmehimmeli')
         m = 200
         n = 100
         n_pulse = 10
