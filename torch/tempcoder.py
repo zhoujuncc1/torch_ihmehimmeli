@@ -1,7 +1,9 @@
 import numpy as np
-from lambert2 import lambertw
+#from lambert2 import lambertw
 import torch
+from torch.utils.cpp_extension import load
 
+lambertw = load(name="lambertw", sources=["lambert.cu"])
 
 # kNoSpike = 1000.0
 # decay_rate = 0.18176949150701854
@@ -21,17 +23,8 @@ kMaxLambertArg = torch.tensor(1.7976131e+308, dtype=torch.double)
 def GetSortedIndices(activations):
     return torch.argsort(activations)
 
-def SortActivations(activations):
-    sorted, _ = torch.sort(activations)
-    return sorted
-
 def ExponentiateSortedValidSpikes(activations, layer_param):
     return torch.where(activations==layer_param.kNoSpike, layer_param.kNoSpike, torch.exp(layer_param.decay_rate * activations))
-
-
-# weight: [feature_out]
-# activation: single
-# exp_activation: single
 
 
 def ActivateNeuronAlpha_itr(weight, activation, exp_activation, A_B_W, layer_param):

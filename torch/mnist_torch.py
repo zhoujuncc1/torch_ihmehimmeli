@@ -28,7 +28,6 @@ def train(args, model, device, train_loader, optimizer, epoch, penalty_output_sp
     for batch_idx, (data, target) in enumerate(train_loader):
         data, onehot_target = 1-torch.flatten(data, start_dim=1),  F.one_hot(target, 10)
         data, onehot_target, target = data.to(device), onehot_target.to(device), target.to(device)
-        optimizer.zero_grad()
         output = model(data)
         correct += (output.argmin(dim=-1)==target).sum()
         loss = cross_entropy_loss(output, onehot_target, penalty_output_spike_time).mean()
@@ -70,7 +69,7 @@ def main():
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=10, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N',
+    parser.add_argument('--epochs', type=int, default=2, metavar='N',
                         help='number of epochs to train (default: 14)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
@@ -80,10 +79,12 @@ def main():
                         help='quickly check a single pass')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=1, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
+    parser.add_argument('--restore', type=str, default=None,
+                        help='checkpoint to restore from')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -120,21 +121,25 @@ def main():
     input_range = (0,1)
     layer_params = LayerParam(kNoSpike, decay_rate, threshold, penalty_no_spike, pulse_init_multiplier, nopulse_init_multiplier, input_range, dtype=torch.float, device=device)
     model = Net(n_pulse, layer_params).to(device)
+    if args.restore:
+        model.load_state_dict(torch.load(args.restore))
+
     optimizer = optim.Adam([
                 {'params': model.fc1.weight},
                 {'params': model.fc2.weight},
                 {'params': model.fc1.pulse, 'lr': 5.95375e-2},
                 {'params': model.fc2.pulse, 'lr': 5.95375e-2}
             ], lr=2.01864e-4)
-    #optimizer = optim.Adam(model.parameters(), lr=2.01864e-2)
+    # optimizer = optim.Adam(model.parameters(), lr=5.95375e-2)
     #scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
+        if args.save_model:
+            torch.save(model.state_dict(), "mnist_mlp.pt")
         test(model, device, test_loader)
 #        scheduler.step()
 
-        if args.save_model:
-            torch.save(model.state_dict(), "mnist_mlp.pt")
+
 
 
 if __name__ == '__main__':
