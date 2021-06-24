@@ -1,9 +1,13 @@
 import unittest
+import sys
+sys.path.append('..')
 import lambert2
 import lambertw
 import time
 import torch
 import numpy as np
+
+
 class TestLambertWTime(unittest.TestCase):
     def test_time(self):
         device = "cuda"

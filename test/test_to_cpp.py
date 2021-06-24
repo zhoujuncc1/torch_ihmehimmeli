@@ -2,6 +2,8 @@ import unittest
 
 # from lambertw import LambertW0 as CLambertW0
 # from lambert2 import lambertw
+import sys
+sys.path.append('..')
 from tempcoder import GetSortedIndices, ExponentiateSortedValidSpikes, ActivateNeuronAlpha
 from Layer import Layer, loss,loss_derivative
 import subprocess
@@ -294,7 +296,7 @@ class TestCrossEntropyLoss(unittest.TestCase):
             expected_call = subprocess.run(cmd, stdout=subprocess.PIPE)
             expected_str = str(expected_call.stdout)[2:-2].split(' ')
             expected_arr = np.asarray([float(s) for s in expected_str])
-            np.testing.assert_almost_equal(loss_v[test_index].numpy(),expected_arr[0])
+            np.testing.assert_almost_equal(loss_v[test_index].numpy(),expected_arr[0], decimal=6)
             np.testing.assert_almost_equal(derivative[test_index].numpy(),expected_arr[1:])
 if __name__ == '__main__':
     unittest.main()
