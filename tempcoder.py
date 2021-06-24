@@ -56,7 +56,6 @@ def ActivateNeuronAlpha(weight, activations, exp_activation, sorted_indices, lay
     #causal_set, a, b, w, decay_params
     spike_time = activations.new_full([batch_size, fan_out], layer_param.kNoSpike)
     A_B_W =  activations.new_full([3, batch_size, fan_out], 0)
-    causal_set =  activations.new_full([batch_size, fan_out, fan_in], False, dtype=torch.bool)
     for i in range(fan_in):
         spike_idx = sorted_indices[:,i:i+1]
         this_activation = torch.gather(activations, 1, spike_idx)
