@@ -1,27 +1,20 @@
-import numpy as np
-#from lambert2 import lambertw
+from unittest.main import main
 import torch
-from torch.utils.cpp_extension import load
 
 import lambertw
+lambertw=lambertw.lambertw
 
-# kNoSpike = 1000.0
-# decay_rate = 0.18176949150701854
-# decay_params = {'rate': decay_rate, 'rate_inverse': 1/decay_rate}
-layer_size = [784, 512, 10]
-weights = [np.zeros([512, 784]), np.zeros([10, 512])]
-fire_threshold = 1.0
-penalty_no_spike = 48.3748
+import spiketime
+# from test.lambert2 import lambertw
+
 clip_derivative = 539.7
-
-# Minimum argument for the main branch of the Lambert W function.
-kMinLambertArg = torch.tensor(-1.0 / np.e, dtype=torch.double)
-# Maximum argument for which gsl_sf_lambert_W0 produces a valid result.
-kMaxLambertArg = torch.tensor(1.7976131e+308, dtype=torch.double)
-
 
 def GetSortedIndices(activations):
     return torch.argsort(activations)
+
+def GetSortedSpikes(activations):
+    return torch.sort(activations)
+
 
 def ExponentiateSortedValidSpikes(activations, layer_param):
     return torch.where(activations==layer_param.kNoSpike, layer_param.kNoSpike, torch.exp(layer_param.decay_rate * activations))
@@ -43,7 +36,7 @@ def ActivateNeuronAlpha_itr(weight, activation, exp_activation, A_B_W, layer_par
     lambert_arg = -layer_param.decay_rate* layer_param.threshold / A_B_W[0] * torch.exp(layer_param.decay_rate * b_over_a)
     lambert_check = torch.logical_and(torch.greater_equal(lambert_arg, layer_param.kMinLambertArg), torch.less_equal(lambert_arg, layer_param.kMaxLambertArg))
     lambert_tmp = torch.where(lambert_check, lambert_arg, layer_param.zero)
-    w_temp = lambertw.lambertw(lambert_tmp)
+    w_temp = lambertw(lambert_tmp)
     spike_time = b_over_a - w_temp * layer_param.decay_rate_inverse
     abw_lambert_check = torch.logical_and(torch.greater_equal(A_B_W[0], 0), lambert_check)
     spike_time = torch.where(torch.logical_and(abw_lambert_check, torch.greater_equal(spike_time, activation)), spike_time, layer_param.kNoSpike)
@@ -67,3 +60,36 @@ def ActivateNeuronAlpha(weight, activations, exp_activation, sorted_indices, lay
 
     causal_set = torch.logical_or(spike_time[:, :, None]==layer_param.kNoSpike, spike_time[:,:,None] > activations[:,None,:])
     return spike_time, A_B_W, causal_set
+
+def ActivateNeuronAlpha_fast(weight, activations, sorted_activations, sorted_exp_activation, sorted_indices, layer_param):
+    batch_size = len(activations)
+    fan_in, fan_out = torch.nn.init._calculate_fan_in_and_fan_out(weight)
+    sorted_activation_expand = sorted_activations[:,None,:].expand(-1, fan_out, -1).contiguous()
+    valid_activation_map = sorted_activation_expand!=layer_param.kNoSpike
+    weight_extend = weight[None,:,:].expand(batch_size, -1,-1)
+    weight_extend = torch.gather(weight_extend, -1, sorted_indices[:,None,:].expand(-1, fan_out,-1))
+    w_exp_z = weight_extend * sorted_exp_activation[:,None,:]
+    A = torch.cumsum(w_exp_z, dim=-1)
+    B = torch.cumsum(w_exp_z*sorted_activation_expand, dim=-1)
+
+    b_over_a = B/A
+    lambert_arg = -layer_param.decay_rate* layer_param.threshold / A * torch.exp(layer_param.decay_rate * b_over_a)
+    lambert_check = torch.logical_and(valid_activation_map, torch.logical_and(torch.greater_equal(lambert_arg, layer_param.kMinLambertArg), torch.less_equal(lambert_arg, layer_param.kMaxLambertArg)))
+    lambert_tmp = torch.where(lambert_check, lambert_arg, layer_param.zero)
+    w_temp = lambertw(lambert_tmp)
+    spike_time = b_over_a - w_temp * layer_param.decay_rate_inverse
+    abw_lambert_check = torch.logical_and(torch.greater_equal(A, layer_param.zero), lambert_check)
+    W = torch.where(abw_lambert_check, w_temp, layer_param.zero)
+
+    spike_time = torch.where(abw_lambert_check, spike_time, layer_param.kNoSpike)
+    valid_spike_time = torch.logical_and(spike_time > sorted_activation_expand, valid_activation_map)
+
+    spike_time, spike_time_index= spiketime.spiketime(spike_time, sorted_activation_expand, layer_param.kNoSpike)
+    causal_set = torch.logical_or(spike_time==layer_param.kNoSpike, spike_time > activations[:,None,:])
+
+    A = torch.gather(A, -1, spike_time_index).squeeze()
+    B = torch.gather(B, -1, spike_time_index).squeeze()
+
+    W = torch.gather(W, -1, spike_time_index).squeeze()
+
+    return spike_time.squeeze(), torch.stack([A,B,W]), causal_set

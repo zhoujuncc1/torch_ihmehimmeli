@@ -4,7 +4,7 @@ import unittest
 # from lambert2 import lambertw
 import sys
 sys.path.append('..')
-from tempcoder import GetSortedIndices, ExponentiateSortedValidSpikes, ActivateNeuronAlpha
+from tempcoder import *
 from Layer import Layer, loss,loss_derivative
 import subprocess
 import os
@@ -112,6 +112,9 @@ class TestActivateNeuronAlpha(unittest.TestCase):
         np.testing.assert_almost_equal(causal_set[test_index].numpy().flatten()==1, causal_set_expect)
 
         self.assertTrue(False in causal_set.numpy(), "causal net not containt false")
+
+
+
 
 class TestLayer(unittest.TestCase):
 

@@ -1,6 +1,6 @@
 import numpy as np
 import tempcoder
-from tempcoder import GetSortedIndices, ExponentiateSortedValidSpikes, ActivateNeuronAlpha
+from tempcoder import *
 import torch
 from torch import nn
 from torch.nn.parameter import Parameter
@@ -55,38 +55,16 @@ class Layer:
             self.input_activation = torch.cat([activation, self.pulse[None,:].expand([len(activation), -1])], dim=1)
         else:
             self.input_activation = activation
-        sorted_indices = GetSortedIndices(self.input_activation)
-        exp_activation = ExponentiateSortedValidSpikes(
-            self.input_activation, self.layer_param)
+        sorted_activations, sorted_indices = GetSortedSpikes(self.input_activation)
+        sorted_exp_activation = ExponentiateSortedValidSpikes(sorted_activations, self.layer_param)
 
-        self.spike_time, self.A_B_W, self.causal_set = ActivateNeuronAlpha(
-                self.weight, self.input_activation, exp_activation, sorted_indices, self.layer_param)
+        self.spike_time, self.A_B_W, self.causal_set = ActivateNeuronAlpha_fast(self.weight, self.input_activation, sorted_activations, sorted_exp_activation, sorted_indices, self.layer_param)
         self.A = self.A_B_W[0]
         self.B = self.A_B_W[1]
         self.W = self.A_B_W[2]
         return self.spike_time
 
-    # def _compute_weight_gradient_real(self, grad):
-    #     e_K_tp = torch.exp(self.layer_param.decay_params['rate']*self.input_activation)
-    #     d = e_K_tp[:,None,:]*(self.input_activation[:,None,:] - (self.B / self.A - self.W * self.layer_param.decay_params['rate_inverse'])[:,:, None]) / ((self.A * (1.0 + self.W))[:,:, None])
-    #     d = torch.clip(d, -tempcoder.clip_derivative, tempcoder.clip_derivative)
-    #     return torch.clip(d * grad[:,:,None], -tempcoder.clip_derivative, tempcoder.clip_derivative)
-    # def _compute_weight_gradient(self, grad):
-    #     grad_w_real = self._compute_weight_gradient_real(grad)
-    #     grad_w = torch.where(self.causal_set==1, grad_w_real, 0.0)
-    #     grad_w = torch.where(self.spike_time[:,:,None] == tempcoder.kNoSpike, - tempcoder.penalty_no_spike, grad_w)
-    #     return grad_w
 
-    # def _compute_input_gradient_real(self, grad):
-    #     e_K_tp = torch.exp(self.layer_param.decay_params['rate']*self.input_activation)
-    #     d = self.weight * e_K_tp[:,None, :] * (self.layer_param.decay_params['rate'] * (self.input_activation[:,None, :] - (self.B / self.A)[:,:, None]) + self.W[:,:, None] + 1) / (self.A * (1.0 + self.W))[:,:, None]
-    #     d = torch.clip(d, -tempcoder.clip_derivative, tempcoder.clip_derivative)
-    #     return torch.clip(grad[:,:, None]*d, -tempcoder.clip_derivative, tempcoder.clip_derivative)
-
-    # def _compute_input_gradient(self, grad):
-    #     check = torch.logical_and(torch.logical_and(torch.less(self.spike_time[:,:, None], tempcoder.kNoSpike),torch.less(self.input_activation[:,None, :], tempcoder.kNoSpike)),self.causal_set)
-    #     grad_x_real = self._compute_input_gradient_real(grad)
-    #     return torch.sum(torch.where(check, grad_x_real, 0.0), axis=0)
     def backward(self, grad):
         self.grad_w = _compute_weight_gradient(grad, self.input_activation, self.causal_set, self.spike_time, self.A, self.B, self.W, self.layer_param)
         self.grad_x = _compute_input_gradient(grad, self.input_activation, self.causal_set, self.spike_time, self.weight, self.A, self.B, self.W, self.layer_param)
@@ -122,10 +100,18 @@ class LinearFunction(torch.autograd.Function):
     # bias is an optional argument
     def forward(ctx, input, weight, pulse, layer_param):
         input_activation = torch.cat([input, pulse[None,:].expand([len(input), -1])], dim=1)
-        sorted_indices = GetSortedIndices(input_activation)
+        sorted_activations, sorted_indices = GetSortedSpikes(input_activation)
         exp_activation = ExponentiateSortedValidSpikes(input_activation, layer_param)
+        sorted_exp_activation = ExponentiateSortedValidSpikes(sorted_activations, layer_param)
+        # spike_time, A_B_W, causal_set = ActivateNeuronAlpha(weight, input_activation, exp_activation, sorted_indices, layer_param)
 
-        spike_time, A_B_W, causal_set = ActivateNeuronAlpha(weight, input_activation, exp_activation, sorted_indices, layer_param)
+        spike_time, A_B_W, causal_set = ActivateNeuronAlpha_fast(weight, input_activation, sorted_activations, sorted_exp_activation, sorted_indices, layer_param)
+        # np.testing.assert_allclose(spike_time.detach().cpu().numpy(), spike_time2.detach().cpu().numpy(), rtol=1e-3)
+
+        # np.testing.assert_allclose(causal_set.detach().cpu().numpy(), causal_set2.detach().cpu().numpy(), rtol=1e-3)
+
+
+        # np.testing.assert_allclose(A_B_W.detach().cpu().numpy(), A_B_W2.detach().cpu().numpy(), rtol=1e-3)
         ctx.save_for_backward(input_activation, weight, spike_time, A_B_W, causal_set)
         ctx.layer_param = layer_param
         ctx.n_pulse = len(pulse)

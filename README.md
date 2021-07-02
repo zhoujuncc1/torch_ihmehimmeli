@@ -19,7 +19,7 @@ Run Mnist example with default parameter:
     python mnist_torch.py
 
 
-Test with trained weight. The accuracy is currently 0.9361 and being updated as training is slow.
+Test with trained weight. The accuracy is currently 0.9361 and being updated as training is slow. Accuracy from ihmehimmeli is 0.974
 
     python mnist_torch.py --epochs 0 --restore mnist_mlp.pt
 

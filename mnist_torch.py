@@ -8,7 +8,7 @@ from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 from Layer import Linear, cross_entropy_loss, LayerParam
 from torch.nn.parameter import Parameter
-
+CUDA_LAUNCH_BLOCKING=1
 
 class Net(nn.Module):
     def __init__(self, n_pulse, layer_prarams):
@@ -37,7 +37,7 @@ def train(args, model, device, train_loader, optimizer, epoch, penalty_output_sp
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\t Acc: {:.4f}'.format(
                 epoch, batch_idx * len(target), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item(), correct.item()/(batch_idx+1)/len(target)))
+                100. * batch_idx / len(train_loader), loss.item(), correct.item()/(batch_idx+1)/len(target)), end='\r')
             if args.dry_run:
                 break
 
@@ -79,7 +79,7 @@ def main():
                         help='quickly check a single pass')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
@@ -120,10 +120,10 @@ def main():
     nopulse_init_multiplier = -0.275419
     input_range = (0,1)
     layer_params = LayerParam(kNoSpike, decay_rate, threshold, penalty_no_spike, pulse_init_multiplier, nopulse_init_multiplier, input_range, dtype=torch.float, device=device)
-    model = Net(n_pulse, layer_params).to(device)
+    model = Net(n_pulse, layer_params)
     if args.restore:
         model.load_state_dict(torch.load(args.restore))
-
+    model=model.to(device)
     optimizer = optim.Adam([
                 {'params': model.fc1.weight},
                 {'params': model.fc2.weight},
@@ -135,7 +135,7 @@ def main():
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
         if args.save_model:
-            torch.save(model.state_dict(), "mnist_mlp.pt")
+            torch.save(model.state_dict(), "mnist_mlp2.pt")
         test(model, device, test_loader)
 #        scheduler.step()
 

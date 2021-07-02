@@ -5,13 +5,23 @@ setup(
     name='lambertw',
     ext_modules=[
         CUDAExtension('lambertw', [
-            'lambert.cu',
+            'kernels/lambert.cu',
         ])
     ],
     cmdclass={
         'build_ext': BuildExtension
     })
 
+setup(
+    name='spiketime',
+    ext_modules=[
+        CUDAExtension('spiketime', [
+            'kernels/spiketime.cu',
+        ])
+    ],
+    cmdclass={
+        'build_ext': BuildExtension
+    })
 
 '''
 Run the command below to build cuda extension locally
