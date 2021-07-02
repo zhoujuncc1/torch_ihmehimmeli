@@ -4,7 +4,7 @@ Torch Ihmehimmeli is a torch version of [ihmehimmeli](https://github.com/google/
 It only supports Alpha Synaptic Function, not DualExponential
 ## Install
 
-Lambert by PyTorch operator is slow so I write a cuda extension. Install first by
+Lambert and AlphaActivation by PyTorch operator is slow so cuda extension is written. Install first by
 
     python setup.py build_ext --inplace
 
@@ -19,7 +19,7 @@ Run Mnist example with default parameter:
     python mnist_torch.py
 
 
-Test with trained weight. The accuracy is currently 0.9361 and being updated as training is slow. Accuracy from ihmehimmeli is 0.974
+Test with trained weight. The accuracy is currently 0.9361 and being updated. Accuracy from ihmehimmeli is 0.974
 
     python mnist_torch.py --epochs 0 --restore mnist_mlp.pt
 
@@ -28,9 +28,3 @@ test dir contains code for development testing. Need to enter the directory to r
 
     cd test
     python test_to_cpp.py
-
-
-## ToDo:
-1. Improve time performance
-2. Support Convolution - How to backpropagate Convolution Layer
-3. Support DualExponential
