@@ -28,6 +28,3 @@ test dir contains code for development testing. Need to enter the directory to r
 
     cd test
     python test_to_cpp.py
-
-## ToDo:
-Add Jittering for higher accuracy
