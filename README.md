@@ -19,7 +19,7 @@ Run Mnist example with default parameter:
     python mnist_torch.py
 
 
-Test with trained weight. The accuracy is currently 0.9361 and being updated. Accuracy from ihmehimmeli is 0.974
+Test with trained weight. The accuracy is currently 0.9672. Accuracy from C++ ihmehimmeli is 0.974
 
     python mnist_torch.py --epochs 0 --restore mnist_mlp.pt
 
@@ -28,3 +28,6 @@ test dir contains code for development testing. Need to enter the directory to r
 
     cd test
     python test_to_cpp.py
+
+## ToDo:
+Add Jittering for higher accuracy

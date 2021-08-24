@@ -1,20 +1,20 @@
 from __future__ import print_function
 import argparse
 import torch
+from torch.cuda.memory import memory_stats_as_nested_dict
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 from Layer import Linear, cross_entropy_loss, LayerParam
-from torch.nn.parameter import Parameter
-CUDA_LAUNCH_BLOCKING=1
 
 class Net(nn.Module):
-    def __init__(self, n_pulse, layer_prarams):
+    def __init__(self, n_pulse, layer_param):
         super(Net, self).__init__()
-        self.fc1 = Linear(784, 340, n_pulse, layer_prarams)
-        self.fc2 = Linear(340, 10, n_pulse, layer_prarams)
+        self.layer_param = layer_param
+        self.fc1 = Linear(784, 340, n_pulse, layer_param)
+        self.fc2 = Linear(340, 10, n_pulse, layer_param)
 
     def forward(self, x):
         x = self.fc1(x)
@@ -25,19 +25,22 @@ class Net(nn.Module):
 def train(args, model, device, train_loader, optimizer, epoch, penalty_output_spike_time=0):
     model.train()
     correct = 0
+    total_loss = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, onehot_target = 1-torch.flatten(data, start_dim=1),  F.one_hot(target, 10)
         data, onehot_target, target = data.to(device), onehot_target.to(device), target.to(device)
+        data = torch.where(data==1.0, model.layer_param.kNoSpike, data)
         output = model(data)
         correct += (output.argmin(dim=-1)==target).sum()
         loss = cross_entropy_loss(output, onehot_target, penalty_output_spike_time).mean()
+        total_loss += loss.item()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\t Acc: {:.4f}'.format(
                 epoch, batch_idx * len(target), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item(), correct.item()/(batch_idx+1)/len(target)), end='\r')
+                100. * batch_idx / len(train_loader), total_loss/(batch_idx+1), correct.item()/(batch_idx+1)/len(target)), end='\r')
             if args.dry_run:
                 break
 
@@ -50,8 +53,9 @@ def test(model, device, test_loader, penalty_output_spike_time=0):
         for data, target in test_loader:
             data, onehot_target = 1-torch.flatten(data, start_dim=1),  F.one_hot(target, 10)
             data, onehot_target, target = data.to(device), onehot_target.to(device), target.to(device)
+            data = torch.where(data==1.0, model.layer_param.kNoSpike, data)
             output = model(data)
-            test_loss += cross_entropy_loss(output, onehot_target, penalty_output_spike_time).mean().item()  # sum up batch loss
+            test_loss += cross_entropy_loss(output, onehot_target, penalty_output_spike_time).sum().item()  # sum up batch loss
             pred = output.argmin(dim=-1)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
@@ -60,6 +64,7 @@ def test(model, device, test_loader, penalty_output_spike_time=0):
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
+    return correct / len(test_loader.dataset)
 
 
 def main():
@@ -77,7 +82,7 @@ def main():
                         help='disables CUDA training') 
     parser.add_argument('--dry-run', action='store_true', default=False,
                         help='quickly check a single pass')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
+    parser.add_argument('--seed', type=int, default=None, metavar='S',
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before logging training status')
@@ -88,7 +93,8 @@ def main():
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
-    torch.manual_seed(args.seed)
+    if args.seed:
+        torch.manual_seed(args.seed)
 
     device = torch.device("cuda" if use_cuda else "cpu")
 
@@ -114,13 +120,14 @@ def main():
     n_pulse = 10
     kNoSpike=1000
     threshold = 1.16732
+
     decay_rate = 0.18176949150701854
     penalty_no_spike = 48.3748
     pulse_init_multiplier = 7.83912
     nopulse_init_multiplier = -0.275419
     input_range = (0,1)
-    layer_params = LayerParam(kNoSpike, decay_rate, threshold, penalty_no_spike, pulse_init_multiplier, nopulse_init_multiplier, input_range, dtype=torch.float, device=device)
-    model = Net(n_pulse, layer_params)
+    layer_param = LayerParam(kNoSpike, decay_rate, threshold, penalty_no_spike, pulse_init_multiplier, nopulse_init_multiplier, input_range, dtype=torch.float, device=device)
+    model = Net(n_pulse, layer_param)
     if args.restore:
         model.load_state_dict(torch.load(args.restore))
     model=model.to(device)
@@ -132,13 +139,21 @@ def main():
             ], lr=2.01864e-4)
     # optimizer = optim.Adam(model.parameters(), lr=5.95375e-2)
     #scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+    if args.restore:
+        print("Restored Accuracy:", end=" ")
+        best = test(model, device, test_loader)
+    else:
+        best = 0
+
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
-        if args.save_model:
-            torch.save(model.state_dict(), "mnist_mlp2.pt")
-        test(model, device, test_loader)
+        acc = test(model, device, test_loader)
+        if args.save_model and acc>=best:
+            torch.save(model.state_dict(), "mnist_mlp_best.pt")
+            best = acc
 #        scheduler.step()
-
+    if args.save_model:
+        torch.save(model.state_dict(), "mnist_mlp_last.pt")
 
 
 
