@@ -1,7 +1,7 @@
 # Torch Ihmehimmeli
 Torch Ihmehimmeli is a torch version of [ihmehimmeli](https://github.com/google/ihmehimmeli)
 
-## Author: Jun Zhou
+**Author:** Jun Zhou
 ## Install
 
 Lambert and AlphaActivation by PyTorch operator is slow so cuda extension is written. Install first by
