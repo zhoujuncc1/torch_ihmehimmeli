@@ -1,7 +1,7 @@
 # Torch Ihmehimmeli
 Torch Ihmehimmeli is a torch version of [ihmehimmeli](https://github.com/google/ihmehimmeli)
 
-It only supports Alpha Synaptic Function, not DualExponential
+## Author: Jun Zhou
 ## Install
 
 Lambert and AlphaActivation by PyTorch operator is slow so cuda extension is written. Install first by
@@ -28,3 +28,9 @@ test dir contains code for development testing. Need to enter the directory to r
 
     cd test
     python test_to_cpp.py
+
+## License & Copyright
+
+Copyright 2021 Jun Zhou, torch_ihmehimmeli is free software: you can redistribute it and/or modoify it under the terms of GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+ShenjingCat is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details http://www.gnu.org/licenses/.
